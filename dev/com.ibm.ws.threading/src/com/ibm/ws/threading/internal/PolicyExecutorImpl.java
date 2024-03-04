@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2017,2023 IBM Corporation and others.
+ * Copyright (c) 2017,2024 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
  * which accompanies this distribution, and is available at
@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
@@ -92,7 +93,7 @@ public class PolicyExecutorImpl implements PolicyExecutor {
 
     private final AtomicInteger expeditesAvailable = new AtomicInteger();
 
-    String identifier;
+    final String identifier;
 
     ExecutorServiceImpl libertyThreadPool;
 
@@ -156,10 +157,10 @@ public class PolicyExecutorImpl implements PolicyExecutor {
     private volatile boolean virtual;
 
     /**
-     * Factory for virtual threads. Only available on Java 21+.
-     * This is populated the first time virtual is set to true.
+     * An executor for running tasks on a thread from this policy executor's ThreadFactory for virtual threads.
+     * Only available on Java 21+. This is populated the first time virtual is set to true.
      */
-    private volatile ThreadFactory virtualThreadFactory;
+    private volatile Executor virtualThreadExecutor;
 
     /**
      * Operations related to virtual threads that are only available on Java 21+.
@@ -273,6 +274,39 @@ public class PolicyExecutorImpl implements PolicyExecutor {
     }
 
     /**
+     * An executor for running tasks on a thread from this policy executor's ThreadFactory for virtual threads.
+     */
+    private class VirtualThreadExecutor implements Executor {
+        private final ThreadFactory threadFactory;
+
+        @Trivial
+        private VirtualThreadExecutor() {
+            threadFactory = virtualThreadOps.createFactoryOfVirtualThreads(identifier + ':', 1L, false, null);
+        }
+
+        @Override
+        public void execute(Runnable task) {
+            threadFactory.newThread(task).start();
+        }
+
+        @Override
+        @Trivial
+        public int hashCode() {
+            return PolicyExecutorImpl.this.hashCode();
+        }
+
+        @Override
+        @Trivial
+        public String toString() {
+            String tf = threadFactory.toString();
+            return new StringBuilder(tf.length() + 31) //
+                            .append("VirtualThreadExecutor@").append(Integer.toHexString(hashCode())) //
+                            .append(' ').append(tf) //
+                            .toString();
+        }
+    }
+
+    /**
      * This constructor is used by PolicyExecutorProvider.
      *
      * @param libertyThreadPool the Liberty thread pool, which was obtained by the PolicyExecutorProvider via declarative services.
@@ -320,7 +354,7 @@ public class PolicyExecutorImpl implements PolicyExecutor {
     @Trivial
     public void asyncCallback(Runnable callback) {
         if (virtual)
-            virtualThreadFactory.newThread(callback).start();
+            virtualThreadExecutor.execute(callback);
         else
             libertyThreadPool.submit(callback);
     }
@@ -633,7 +667,7 @@ public class PolicyExecutorImpl implements PolicyExecutor {
         asyncTask.expedite = false;
         boolean submitted = false;
         try {
-            virtualThreadFactory.newThread(asyncTask).start();
+            virtualThreadExecutor.execute(asyncTask);
             submitted = true;
         } finally {
             if (!submitted) {
@@ -697,6 +731,11 @@ public class PolicyExecutorImpl implements PolicyExecutor {
     }
 
     @Override
+    public Executor getVirtualThreadExecutor() {
+        return virtual == true ? virtualThreadExecutor : null;
+    }
+
+    @Override
     @SuppressWarnings({ "rawtypes", "unchecked" })
     @Trivial
     public final <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks) throws InterruptedException {
@@ -720,7 +759,16 @@ public class PolicyExecutorImpl implements PolicyExecutor {
         // Determine if we need a permit to run one or more of the tasks on the current thread, and if so, acquire it,
         int taskCount = tasks.size();
         boolean havePermit = false;
-        boolean useCurrentThread = maxPolicy == MaxPolicy.loose || (havePermit = taskCount > 0 && maxConcurrencyConstraint.tryAcquire());
+        boolean useCurrentThread;
+        MaxPolicy policy = maxPolicy;
+        if (policy == MaxPolicy.loose) // can always run inline
+            useCurrentThread = true;
+        else if (policy == MaxPolicy.strict) // must acquire a permit to run inline
+            useCurrentThread = havePermit = taskCount > 0 && maxConcurrencyConstraint.tryAcquire();
+        else // can run inline on platform threads (loose); Never run inline on virtual threads
+            throw new UnsupportedOperationException("maxPolicy=null"); // currently unreachable, waiting for a pull that is blocked
+        // TODO:
+        // useCurrentThread = !(virtualThreadOps.isSupported() && virtualThreadOps.isVirtual(Thread.currentThread()));
 
         List<PolicyTaskFutureImpl<T>> futures = new ArrayList<PolicyTaskFutureImpl<T>>(taskCount);
         try {
@@ -891,7 +939,18 @@ public class PolicyExecutorImpl implements PolicyExecutor {
         // Special case to run a single task on the current thread if we can acquire a permit, if a permit is required
         if (taskCount == 1) {
             boolean havePermit = false;
-            if (maxPolicy == MaxPolicy.loose || (havePermit = maxConcurrencyConstraint.tryAcquire())) // use current thread
+            boolean useCurrentThread;
+            MaxPolicy policy = maxPolicy;
+            if (policy == MaxPolicy.loose) // can always run inline
+                useCurrentThread = true;
+            else if (policy == MaxPolicy.strict) // must acquire a permit to run inline
+                useCurrentThread = havePermit = maxConcurrencyConstraint.tryAcquire();
+            else // can run inline on platform threads (loose); Never run inline on virtual threads
+                throw new UnsupportedOperationException("maxPolicy=null"); // currently unreachable, waiting for a pull that is blocked
+            // TODO:
+            // useCurrentThread = !(virtualThreadOps.isSupported() && virtualThreadOps.isVirtual(Thread.currentThread()));
+
+            if (useCurrentThread)
                 try {
                     if (state.get() != State.ACTIVE)
                         throw new RejectedExecutionException(Tr.formatMessage(tc, "CWWKE1202.submit.after.shutdown", identifier));
@@ -1079,9 +1138,6 @@ public class PolicyExecutorImpl implements PolicyExecutor {
 
     @Override
     public PolicyExecutor maxPolicy(MaxPolicy policy) {
-        if (policy == null)
-            throw new NullPointerException();
-
         if (state.get() != State.ACTIVE)
             throw new IllegalStateException(Tr.formatMessage(tc, "CWWKE1203.config.update.after.shutdown", "maxPolicy", identifier));
 
@@ -1485,8 +1541,8 @@ public class PolicyExecutorImpl implements PolicyExecutor {
                 maxQueueSizeConstraint.reducePermits(-queueCapacityAdded);
             maxQueueSize = u_maxQueueSize;
 
-            if (useVirtualThreads && virtualThreadFactory == null)
-                virtualThreadFactory = virtualThreadOps.createFactoryOfVirtualThreads(identifier + '-', 1L, false, null);
+            if (useVirtualThreads && virtualThreadExecutor == null)
+                virtualThreadExecutor = new VirtualThreadExecutor();
 
             virtual = useVirtualThreads;
         }

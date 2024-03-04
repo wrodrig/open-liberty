@@ -1,5 +1,5 @@
 #*******************************************************************************
-# Copyright (c) 2020, 2023 IBM Corporation and others.
+# Copyright (c) 2020, 2024 IBM Corporation and others.
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Eclipse Public License 2.0
 # which accompanies this distribution, and is available at
@@ -10,10 +10,10 @@
 -include= ~../cnf/resources/bnd/bundle.props
 bVersion=1.0
 
-javac.source: 21
-javac.target: 21
+javac.source: 17
+javac.target: 17
 
-Require-Capability: osgi.ee; filter:="(&(osgi.ee=JavaSE)(version=21))"
+Require-Capability: osgi.ee; filter:="(&(osgi.ee=JavaSE)(version=17))"
 
 Bundle-SymbolicName: io.openliberty.jakarta.cdi.4.1; singleton:=true
 
@@ -61,14 +61,14 @@ publish.wlp.jar.suffix: dev/api/spec
 
 -includeresource: \
    @${repo;jakarta.inject:jakarta.inject-api;2.0.1;EXACT}!/!(META-INF/maven/*|module-info.class),\
-   @${repo;jakarta.enterprise:jakarta.enterprise.cdi-api;4.1.0.Alpha1;EXACT}!/!(META-INF/maven/*|module-info.class),\
-   @${repo;jakarta.enterprise:jakarta.enterprise.cdi-el-api;4.1.0.Alpha1;EXACT}!/!(META-INF/maven/*|module-info.class),\
-   @${repo;jakarta.enterprise:jakarta.enterprise.lang-model;4.1.0.Alpha1;EXACT}!/!(META-INF/maven/*|module-info.class)
+   @${repo;jakarta.enterprise:jakarta.enterprise.cdi-api;4.1.0.Beta2;EXACT}!/!(META-INF/maven/*|module-info.class),\
+   @${repo;jakarta.enterprise:jakarta.enterprise.cdi-el-api;4.1.0.Beta2;EXACT}!/!(META-INF/maven/*|module-info.class),\
+   @${repo;jakarta.enterprise:jakarta.enterprise.lang-model;4.1.0.Beta2;EXACT}!/!(META-INF/maven/*|module-info.class)
 
 -maven-dependencies: \
    dep1;groupId=jakarta.inject;artifactId=jakarta.inject-api;version=2.0.1;scope=runtime,\
-   dep2;groupId=jakarta.enterprise;artifactId=jakarta.enterprise.cdi-api;version=4.1.0.Alpha1;scope=runtime,\
-   dep3;groupId=jakarta.enterprise;artifactId=jakarta.enterprise.cdi-el-api;version=4.1.0.Alpha1;scope=runtime,\
-   dep4;groupId=jakarta.enterprise;artifactId=jakarta.enterprise.lang-model;version=4.1.0.Alpha1;scope=runtime
+   dep2;groupId=jakarta.enterprise;artifactId=jakarta.enterprise.cdi-api;version=4.1.0.Beta2;scope=runtime,\
+   dep3;groupId=jakarta.enterprise;artifactId=jakarta.enterprise.cdi-el-api;version=4.1.0.Beta2;scope=runtime,\
+   dep4;groupId=jakarta.enterprise;artifactId=jakarta.enterprise.lang-model;version=4.1.0.Beta2;scope=runtime
 
 
