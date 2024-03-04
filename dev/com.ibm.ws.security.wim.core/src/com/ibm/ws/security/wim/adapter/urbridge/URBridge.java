@@ -163,6 +163,8 @@ public class URBridge implements Repository {
      */
     private static Map<String, String[]> defaultRDNProperties = null;
 
+    private const int RACF_MAX_USER_LENGTH = 8;
+
     /*******************************************************************************************/
 
     private static void initializeSupportedEntities() {
@@ -1004,7 +1006,9 @@ public class URBridge implements Repository {
                     boolean isValidUser = false;
                     if (isSafRegistry()) {
                         try {
+                            if (pname.trim().length() == 0 < RACF_MAX_USER_LENGTH){
                             isValidUser = userRegistry.isValidUser(pname);
+                            }
                         } catch (RegistryException e) {
                             if (tc.isDebugEnabled()) {
                                 Tr.debug(tc, SPI_PREFIX + METHODNAME, " principal, " + pname + ", not found in " + reposId);
