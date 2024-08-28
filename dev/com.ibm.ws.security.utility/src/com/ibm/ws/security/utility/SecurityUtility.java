@@ -13,7 +13,10 @@
 package com.ibm.ws.security.utility;
 
 import java.io.PrintStream;
+import java.security.AccessController;
 import java.util.ArrayList;
+import java.security.PrivilegedAction;
+import java.util.Properties;
 import java.util.List;
 
 import com.ibm.ws.crypto.certificateutil.DefaultSSLCertificateCreator;
@@ -64,6 +67,7 @@ public class SecurityUtility extends UtilityTemplate {
      * @param task
      */
     void registerTask(SecurityUtilityTask task) {
+        System.out.println("WRG+++Hello from registerTask");
         tasks.add(task);
     }
 
@@ -75,6 +79,8 @@ public class SecurityUtility extends UtilityTemplate {
      *         no match is found
      */
     private SecurityUtilityTask getTask(String taskName) {
+        System.out.println("WRG+++Works here Hello from getTask");
+        // System.setProperty("com.ibm.fips.silentUsage", "true");
         SecurityUtilityTask task = null;
         for (SecurityUtilityTask availTask : tasks) {
             if (availTask.getTaskName().equals(taskName)) {
@@ -90,6 +96,7 @@ public class SecurityUtility extends UtilityTemplate {
      * @param args
      */
     SecurityUtilityReturnCodes runProgram(String[] args) {
+        System.out.println("WRG+++Hello from runProgram");
         if (stdin == null) {
             stderr.println(CommandUtils.getMessage("error.missingIO", "stdin"));
 
@@ -153,9 +160,16 @@ public class SecurityUtility extends UtilityTemplate {
      * @param args
      */
     public static void main(String[] args) {
-        ConsoleWrapper console = new ConsoleWrapper(System.console(), System.err);
-
+        System.out.println("WRG+++Hello from main");
+        AccessController.doPrivileged(new PrivilegedAction<Void>(){
+            @Override
+            public Void run(){
+            System.setProperty("com.ibm.fips.silentUsage", "true");
+            return null;
+            }
+        });
         // Create / obtain the collaborators
+        ConsoleWrapper console = new ConsoleWrapper(System.console(), System.err);
         DefaultSSLCertificateCreator certCreator = DefaultSSLCertificateFactory.getDefaultSSLCertificateCreator();
         LTPAKeyFileUtility ltpaKeyFileCreator = new LTPAKeyFileUtilityImpl();
 
